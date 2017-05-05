@@ -1,23 +1,12 @@
 # Z3sec
 
-Framework and tools for testing the security of ZigBee LightLink (ZLL) and
-Zigbee 3.0.
+Penetration testing framework to test the touchlink commissioning features of ZigBee-certified products that support touchlink commissioning.
 
 ## Introduction
 
-ZLL is an application profile for the ZigBee wireless protocol which was
-designed for home user connected lighting systems. In order to simplify the
-process of setting up and expanding a ZLL network, ZLL introduced an additional
-commissioning mechanism called touchlink. This tool/framework exploits design
-flaws in the protocol that enables a local attacker to drive denial-of-service
-attacks against smart light bulbs, as well as to take over and control single
-light bulbs or a whole ZLL network.
+ZigBee Light Link (ZLL) is an application profile of the ZigBee standard, primarily designed for home consumer connected lighting systems. In order to simplify the process of setting up and configuring a ZLL network, ZLL introduced an commissioning mechanism called touchlink commissioning. The tool of this framework only use legitmate features in the protocol that enables a local attacker to perform denial-of-service attacks against touchlink-enabled devices, as well as to take over and control devices.
 
-ZLL is superseded by Zigbee 3.0, but the touchlink protocol is still an
-optional feature.
-
-This project is a collection of tools to test the security of ZLL/Zigbee 3.0
-networks.
+Touchlink commissioning is supported by all devices complaint to the ZLL specifications, and an optional feature in ZigBee 3.0-complaint products.
 
 ## Installation
 
