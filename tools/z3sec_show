@@ -1,0 +1,74 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+
+try:
+    from scapy.all import *
+except ImportError:
+    print "This tool requires Scapy to be installed (scapy-com with Zigbee LightLink extension)"
+    sys.exit(-1)
+
+from killerbee import *
+from killerbee.scapy_extensions import *
+
+del hexdump
+from scapy.utils import hexdump
+
+def decrypt(pkt, network_key):
+    payload = kbdecrypt(pkt, network_key, 0)
+    pkt.data = ""  # remove encrypted payload
+    pkt.mic = ""  # remove mic
+    return pkt / payload
+
+def parse_network_key(string):
+    if len(string) == 32:
+        try:
+            return string.decode('hex')
+        except ValueError:
+            msg = "only hexadecimal characters are allowed"
+            raise argparse.ArgumentTypeError(msg)
+    else:
+        msg = "Length of %r characters. Expected: 32." % len(string)
+        raise argparse.ArgumentTypeError(msg)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Display the content of a "
+            "pcap file parsed by scapy.")
+    # parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--file', type=str, required=True,
+            help="Pcap file to display.")
+    parser.add_argument('-k', '--network_key', type=parse_network_key, default=None,
+            help="Try to decrypt packets with the given network key.")
+    parser.add_argument('-n', '--number', action='store', type=int, default=None,
+            help="Display single packet in greater detail.")
+    parser.add_argument('-p', '--pdf', action='store_true',
+            help="Dump scapy dissection of a single packet as pdf to '/tmp/scapy.pdf'.")
+    args = parser.parse_args()
+
+    pcap = kbrdpcap(args.file)
+
+    if args.number is None:
+        for (i, p) in enumerate(pcap):
+            print("# {0}:".format(i))
+            # decrypt pkt if possible
+            if args.network_key is not None \
+                    and p.haslayer(ZigbeeSecurityHeader) \
+                    and p.key_type == 1:
+                p = decrypt(p, args.network_key)
+            print(p.summary())
+    else:
+        p = pcap[args.number]
+        if args.network_key is not None \
+                and p.haslayer(ZigbeeSecurityHeader) \
+                and p.key_type == 1:
+            p = decrypt(p, args.network_key)
+            p.show2()
+            p[4].show()
+            print(ZDPLqiResponse in p)
+            hexdump(p)
+        else:
+            p.show2()
+            hexdump(p)
+        if args.pdf:
+            p.pdfdump("/tmp/scapy.pdf")

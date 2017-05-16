@@ -1,12 +1,23 @@
 # Z3sec
 
-Penetration testing framework to test the touchlink commissioning features of ZigBee-certified products that support touchlink commissioning.
+Framework and tools for testing the security of ZigBee LightLink (ZLL) and
+Zigbee 3.0.
 
 ## Introduction
 
-ZigBee Light Link (ZLL) is an application profile of the ZigBee standard, primarily designed for home consumer connected lighting systems. In order to simplify the process of setting up and configuring a ZLL network, ZLL introduced an commissioning mechanism called touchlink commissioning. The tool of this framework only use legitmate features in the protocol that enables a local attacker to perform denial-of-service attacks against touchlink-enabled devices, as well as to take over and control devices.
+ZLL is an application profile for the ZigBee wireless protocol which was
+designed for home user connected lighting systems. In order to simplify the
+process of setting up and expanding a ZLL network, ZLL introduced an additional
+commissioning mechanism called touchlink. This tool/framework exploits design
+flaws in the protocol that enables a local attacker to drive denial-of-service
+attacks against smart light bulbs, as well as to take over and control single
+light bulbs or a whole ZLL network.
 
-Touchlink commissioning is supported by all devices complaint to the ZLL specifications, and an optional feature in ZigBee 3.0-complaint products.
+ZLL is superseded by Zigbee 3.0, but the touchlink protocol is still an
+optional feature.
+
+This project is a collection of tools to test the security of ZLL/Zigbee 3.0
+networks.
 
 ## Installation
 
@@ -26,12 +37,14 @@ Touchlink commissioning is supported by all devices complaint to the ZLL specifi
 + setuptools
 + (see `install_dependencies.sh` for a complete list)
 
-#### Install steps (Ubuntu 16.10 x64)
+#### Install steps (Ubuntu 16.10 x86_64)
 
-1. Install all needed dependencies with:
+1. `git clone https://github.com/IoTsec/Z3sec.git`
+2. `cd Z3sec`
+3. Install all needed dependencies with:
   - `bash ./install_dependencies.sh`
    (Password for sudo is requested when needed.)
-2. Install Z3sec with:
+4. Install Z3sec with:
   - `sudo python setup.py install`
 
 ### Hardware
@@ -52,9 +65,10 @@ Tested with both the Ettus B200 USRP (GnuRadio) and the MoteIV Tmote Sky
 
 #### Killerbee Radio
 
-1. Connect the device to the computer.
-2. Execute `sudo zbid` to find out it's device string.
-3. Use `--kb` together with the device string (e.g. `--kb /dev/ttyUSB0`) in
+1. Flash the Killerbee firmware ( follow the instructions on https://github.com/riverloopsec/killerbee ).
+2. Connect the device to the computer.
+3. Execute `sudo zbid` to find out it's device string.
+4. Use `--kb` together with the device string (e.g. `--kb /dev/ttyUSB0`) in
  order to use it in the tools.
 
 ### Tools

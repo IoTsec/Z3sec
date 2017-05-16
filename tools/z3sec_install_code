@@ -1,0 +1,120 @@
+#!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
+
+from Crypto.Cipher import AES
+import argparse
+import binascii
+import struct
+import sys
+
+BLOCKSIZE = 16  # 128 bits
+
+# for performance:
+REFLECT_TABLE = [
+    0,128,64,192,32,160,96,224,16,144,80,208,48,176,112,240,
+    8,136,72,200,40,168,104,232,24,152,88,216,56,184,120,248,
+    4,132,68,196,36,164,100,228,20,148,84,212,52,180,116,244,
+    12,140,76,204,44,172,108,236,28,156,92,220,60,188,124,252,
+    2,130,66,194,34,162,98,226,18,146,82,210,50,178,114,242,
+    10,138,74,202,42,170,106,234,26,154,90,218,58,186,122,250,
+    6,134,70,198,38,166,102,230,22,150,86,214,54,182,118,246,
+    14,142,78,206,46,174,110,238,30,158,94,222,62,190,126,254,
+    1,129,65,193,33,161,97,225,17,145,81,209,49,177,113,241,
+    9,137,73,201,41,169,105,233,25,153,89,217,57,185,121,249,
+    5,133,69,197,37,165,101,229,21,149,85,213,53,181,117,245,
+    13,141,77,205,45,173,109,237,29,157,93,221,61,189,125,253,
+    3,131,67,195,35,163,99,227,19,147,83,211,51,179,115,243,
+    11,139,75,203,43,171,107,235,27,155,91,219,59,187,123,251,
+    7,135,71,199,39,167,103,231,23,151,87,215,55,183,119,247,
+    15,143,79,207,47,175,111,239,31,159,95,223,63,191,127,255]
+
+
+def reflect(string):
+    """reverse bit order of each byte inside the string """
+    return "".join([chr(REFLECT_TABLE[ord(byte)]) for byte in string])
+
+def install_code_crc(string):
+    # reflected in
+    string_reflected = reflect(string)
+    crc_unreflected = binascii.crc_hqx(string_reflected, 0xffff)
+    # reflected out and final XOR wit 0xffff
+    crc = reflect(struct.pack(">H", crc_unreflected ^ 0xffff))
+    return crc
+
+def xor(string_1, string_2):
+    return "".join(chr(ord(b1) ^ ord(b2)) for b1, b2 in zip(string_1, string_2))
+
+def matyas_meyer_oseas_hash(input_string):
+    input_length = len(input_string)
+    # init:
+    hash = "\x00" * 16
+    # add padding and lenght:
+    if (input_length * 8) < 2**BLOCKSIZE:
+        input_string_padded = input_string \
+                + "\x80" \
+                + "\x00" * ((BLOCKSIZE - ((input_length + 1 + (BLOCKSIZE/8)) % BLOCKSIZE)) % BLOCKSIZE) \
+                + struct.pack(">H", input_length * 8)  # BLOCKSIZE/8 bit representation
+    else:
+        input_string_padded = input_string \
+                + "\x80" \
+                + "\x00" * ((BLOCKSIZE - ((input_length + 1 + (2*(BLOCKSIZE/8)) + (BLOCKSIZE/8)) % BLOCKSIZE)) % BLOCKSIZE) \
+                + struct.pack(">I", input_length * 8) \
+                + "\x00" * (BLOCKSIZE/8)
+    for i in range(0, len(input_string_padded), BLOCKSIZE):
+        input_block = input_string_padded[i:i + BLOCKSIZE]
+        cipher = AES.new(hash, AES.MODE_ECB)
+        hash = xor(cipher.encrypt(input_block), input_block)
+    return hash
+
+def arg_type_install_code(string):
+    string_stripped = string.replace(" ","").strip()
+    try:
+        string_bytes = string_stripped.decode("hex")
+    except:
+        msg = "%r contains non-hexadecimal characters." % string
+        raise argparse.ArgumentTypeError(msg)
+    if len(string_bytes) in [6, 8, 10, 12, 14, 16, 18]:  # check insufficient
+        return string_bytes
+    else:
+        msg = "%r has an invalid length" % string
+        raise argparse.ArgumentTypeError(msg)
+    return string.decode('hex')
+
+def main():
+    parser = argparse.ArgumentParser(description="Generate keys from "
+            "install codes for ZigBee devices.")
+    parser.add_argument("--install_code", type=arg_type_install_code,
+            required=True,
+            help="The install code for which a key shall be computed.")
+    parser.add_argument("--gen_crc", action="store_true", help="Indicate that "
+            "the passed install code does not contain a CRC value. The "
+            "missing CRC value will be generated on the fly in order to "
+            "compute the key.")
+    args = parser.parse_args()
+
+    if args.gen_crc:
+        if len(args.install_code) not in [6, 8, 12, 16]:
+            print("Install code (without CRC) has an invalid length.")
+            sys.exit(1)
+        crc_generated = install_code_crc(args.install_code)
+        print("Generated CRC: " + crc_generated.encode("hex"))
+        args.install_code += crc_generated
+    else:  # CRC is already included
+        if len(args.install_code) not in [8, 10, 14, 18]:
+            print("Install code (without CRC) has an invalid length.")
+            sys.exit(1)
+        crc_extracted = args.install_code[-2:]
+        crc_generated = install_code_crc(args.install_code[:-2])
+        if crc_extracted == crc_generated:
+            print("CRC check: PASSED")
+        else:
+            print("CRC check: FAILED")
+            print("Extracted CRC: " + crc_extracted.encode("hex"))
+            print("Generated CRC: " + crc_generated.encode("hex"))
+            sys.exit(1)
+
+    print("Generated key: " \
+            + matyas_meyer_oseas_hash(args.install_code).encode("hex"))
+
+if __name__ == "__main__":
+    main()
