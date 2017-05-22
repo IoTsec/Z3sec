@@ -1,5 +1,6 @@
-Z3sec: Penetration testing framework to test the touchlink commissioning features of ZigBee-certified products.
-Copyright © 2017 IoTsec
+Z3sec: Penetration testing framework for ZigBee security research.
+Copyright © 2017 Chair for IT Security Infrastructures, 
+Friedrich-Alexander-Universität Erlangen-Nürnberg.
 
 The following license applies to everything in this project except the "patch"
 folder.
@@ -21,4 +22,3 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
