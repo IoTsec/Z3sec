@@ -74,10 +74,10 @@ For a detailed descriptions of the parameters of each tool, please refer to the 
 
 This tool partially reimplements the touchlink commissioning procedure from the perspective of an
 initiator. The tool comprises of several sub-tools, which can send specific touchlink commands. 
-The received signal strength of these touchlink commands on the targeted device must be above a certain threshold. 
-For an evaluation of the wireless range fo these tools, please see[1].
+The received signal strength of these touchlink commands on the targeted device must be above a certain threshold, i.e., within the *touchlink range*. 
+For an evaluation of the wireless range fo these tools, please see [1].
 
-For a detailed description of all parameters of each sub-tool, please refer to the help message, e.g., `z3sec_touchlink scan --help`.
+For the description of all parameters of a sub-tool, please refer to the help message, e.g., `z3sec_touchlink scan --help`.
 
 - `scan`: Actively searches for touchlink-enabled devices in the touchlink range and displays
   an overview of all received scan responses. Here, and for all subsequent
