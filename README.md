@@ -55,14 +55,14 @@ All tools of *Z3sec* are tested with the Ettus USRP B200 (GnuRadio) and the Mote
 
 1. Connect the USRP to the computer.
 3. Verify the successful connection via `uhd_find_devices`.
-3. Use the `--sdr` parameter in the Z3sec tools.
+3. Use the `--sdr` parameter in the *Z3sec* tools.
 
 #### Killerbee Radio
 
 1. Flash the Killerbee firmware as described on https://github.com/riverloopsec/killerbee
 2. Connect the device to the computer.
 3. Execute `sudo zbid` to get the device name.
-4. Use the `--kb` argument together with the device name (e.g. `--kb /dev/ttyUSB0`) in the Z3sec tools.
+4. Use the `--kb` argument together with the device name (e.g. `--kb /dev/ttyUSB0`) in the *Z3sec* tools.
 
 ### Tools
 
