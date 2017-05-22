@@ -1,7 +1,7 @@
 # Z3sec
 
-*Z3sec* is a penetration testing framework comprising a set of command line tools for ZigBee security research.
-Primary targets of the framework are devices that implement either the ZigBee Light Link (ZLL) or the ZigBee 3.0 standard.
+*Z3sec* is an open-source penetration testing framework comprising a set of command line tools for ZigBee security research.
+Primary targets of the framework are ZigBee-certified devices that implement either the ZigBee Light Link (ZLL) or the ZigBee 3.0 standard.
 
 ## Introduction
 
