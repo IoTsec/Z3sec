@@ -24,7 +24,7 @@ For more information about the security weaknesses of touchlink commissioning an
 + gr-ieee802.15.4
 + KillerBee
 + scapy-radio (https://bitbucket.org/cybertools/scapy-radio)
-+ Ipyton
++ Ipython
 + Wireshark (optional)
 + python-crypto
 + python-sphinx (docs)
