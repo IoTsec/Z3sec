@@ -193,6 +193,6 @@ impersonated and spoofed device.
 For more information about the security of touchlink commissioning and an extensive evaluation of the presented attacks, please see:
 
 [1] P. Morgner, S. Mattejat, Z. Benenson, C. Müller, F. Armknecht:
-**Insecure to the Touch: Attacking ZigBee 3.0 via Touchlink Commissioning**. WiSec 2017
+**Insecure to the Touch: Attacking ZigBee 3.0 via Touchlink Commissioning**. In Proceedings of the 10th ACM Conference on Security & Privacy in Wireless and Mobile Networks (WiSec'17, Boston, MA, July 18-20, 2017)
 
 If you refer to *Z3sec* in a publication, please cite [1].
