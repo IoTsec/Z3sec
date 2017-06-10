@@ -81,7 +81,7 @@ class RecvSnd(threading.Thread):
             if recvpkt is not None:
                 pkt = self.observer.analyse(recvpkt)
                 self.sniffed_q.put(pkt)
-            # check if there are packtes for injection
+            # check if there are packets for injection
             try:  # send queued packets
                 (sndpkt_raw, mac_src, nwk_src, mac_dst, nwk_dst) = \
                         self.inject_q.get_nowait()
@@ -155,7 +155,7 @@ def show():
     """Display all currently tracked networks and devices."""
     if len(observer.known_networks) is 0:
         print("No ZLL devices or networks have been discoverd yet. Please "
-                "wait or tune to an other channel.")
+                "wait or tune to another channel.")
     for (i, network) in enumerate(observer.known_networks):
         print("Network: {}".format(i))
         network.show()
@@ -176,9 +176,8 @@ def stop():
     exit()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Interactively send simple "
-            "commands packets to ZLL devices. Note: This only works if the "
-            "network key of the network is known.")
+    parser = argparse.ArgumentParser(
+    description="This tool keeps track of all ZigBee devices and networks on a specific channel. If the network key of a ZigBee network is known, this tool can be used to interactively send command frames to devices of this network. The network key for a network is passed on startup.")
     radio_group = parser.add_mutually_exclusive_group(required=True)
     radio_group.add_argument("--kb", action="append",
             help="Use a KillerBee compatible radio device. It is required to "

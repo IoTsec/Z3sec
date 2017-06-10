@@ -25,9 +25,8 @@ from z3sec import arg_type
 
 # SCAN cmd:
 def scan_parser(command_parsers):
-    parser_scan = command_parsers.add_parser("scan", help="Send touchlink "
-            "scan requests and displays scan responses. Scanning is repeated "
-            "until at least one device is found.")
+    parser_scan = command_parsers.add_parser("scan",
+            help="Actively searches for touchlink-enabled devices in the touchlink range and displays an overview of all received scan responses. Here, and for all subsequent sub-commands, it is possible to specify the channels on which shall be searched for devices. By default, only channel 11 is scanned. Scanning will continue until at least one device is found.")
     parser_scan.add_argument("--hexdump", action="store_true",
             help="Print the hexdump of every received scan response.")
     parser_scan.add_argument("--show", action="store_true",
@@ -46,23 +45,21 @@ def scan(args):
 # IDENTIFY cmd:
 def identify_parser(command_parsers):
     parser_identify = command_parsers.add_parser("identify",
-            help="Send an identify request to a device. On receipt of this "
-            "command, the target device identifies itself by blinking.")
+            help="Trigger the identify action (e.g. blinking) of a touchlink-enabled device in touchlink range. The identify duration can be set up to a theoretical maximum duration of 0xFFFE seconds (approximately 18 hours).")
     parser_identify.add_argument("-d", "--duration", default=0xffff,
             type=arg_type.duration,
             help="Set the identify duration in seconds. "
                 "Range: 0x0000-0xffff (or 0-65535). "
                 "Two values have a special effect: "
-                "The value 0 (or 0x0000) stops the identify process "
-                "immidiately, and the value 65535 (or 0xffff) lets the device "
+                "The value 0 (or 0x0000) stops the identify action "
+                "immediately, and the value 65535 (or 0xffff) lets the device "
                 "identify itself for a default duration.")
     parser_identify.add_argument('--no_scan', action="store_true",
-            help="Just boadcast identify request on all specified channels. "
+            help="Just broadcast identify request on all specified channels. "
             "The transaction id is set to zero. This bypasses the proximity "
             "check of some (old) ZLL devices.")
     parser_identify.add_argument('--broadcast', action="store_true",
-            help="Send scan requests and broadcast identify requests on all "
-            "specified channels. Do not wait for scan responses.")
+            help="Send scan requests and broadcast identify requests on all specified channels. Do not wait for scan responses. This might also bypass the proximity check of some ZLL devices.")
     parser_identify.set_defaults(func=identify)
 
 def identify(args):
@@ -115,9 +112,7 @@ def identify(args):
 # ANTI-SCAN cmd:
 def anti_scan_parser(command_parsers):
     parser_anti_scan = command_parsers.add_parser("anti-scan",
-            help="Suppress touchlink scan request of other devices on "
-            "channels other than 11. This is done by spoofing the original "
-            "scan request on the remaining primary channels ahead of time.")
+            help="Suppress scan requests of other touchlink initiators by impersonating them. This tool monitors channel 11 until a touchlink scan request of another initiator is received. This scan request is cloned and transmitted on all other channels. Touchlink-enabled devices on these channels respond immediately to the spoofed scan request, and won't reply to the scan request by the legitimate initiator.")
     parser_anti_scan.set_defaults(func=anti_scan)
 
 def anti_scan(args):
@@ -153,10 +148,7 @@ def anti_scan(args):
 # UPDATE cmd:
 def update_parser(command_parsers):
     parser_update = command_parsers.add_parser("update",
-        help="Send a network update request to the target device, in order to "
-        "change the channel of a ZLL device. The other arguments, apart from "
-        "'--channel_new', are set to the current values of the target "
-        "device. Modifying these may result in failure.")
+            help="Update the channel of a touchlink-enabled device in touchlink range. If the channel is changed, the targeted device cannot communicate with its legitimate network anymore. The arguments besides '--channel_new' might not have an desired effect.")
     # These arguments do not have an effect:
     parser_update.add_argument('--addr_new', type=arg_type.addr_short)
     parser_update.add_argument('--pan_id_new', type=arg_type.addr_short)
@@ -200,16 +192,13 @@ def update(args):
 # RESET cmd:
 def reset_parser(command_parsers):
     parser_reset = command_parsers.add_parser("reset",
-            help="Send a reset requst to a target device. On receipt, the "
-            "target device leaves its current network, and resets all "
-            "settings to factory new.")
+            help="Reset a touchlink-enabled device in touchlink range to factory-new. The target devices leave their current network and search for new networks. The target devices have to be recommissioned before they can be controlled again.")
     parser_reset.add_argument('--no_scan', action="store_true",
-            help="Just boadcast identify request on all specified channels. "
+            help="Just broadcast identify request on all specified channels. "
             "The transaction id is set to zero. This bypasses the proximity "
             "check of some (old) ZLL devices.")
     parser_reset.add_argument('--broadcast', action="store_true",
-            help="Send scan requests and broadcast reset requests on all "
-            "specified channels. Do not wait for scan responses.")
+            help="Send scan requests and broadcast reset requests on all specified channels. Do not wait for scan responses. This might also bypass the proximity check of some ZLL devices.")
     parser_reset.set_defaults(func=reset)
 
 def reset(args):
@@ -218,7 +207,7 @@ def reset(args):
             reset_request = \
                 args.tl.create_reset_to_factory_new_request(None)
             reset_request.fcf_destaddrmode = 2  # short
-            reset_request.dest_addr = 0xffff  # braodcast
+            reset_request.dest_addr = 0xffff  # broadcast
             reset_request.inter_pan_transaction_id = 0
             for c in args.channels:
                 print("Sending broadcast reset request on channel {}".format(c))
@@ -262,8 +251,7 @@ def reset(args):
 # JOIN cmd:
 def join_parser(command_parsers):
     parser_join = command_parsers.add_parser("join",
-            help="Send a join network request to a target device and "
-                "integrate it in a new network.")
+            help="Request a touchlink-enabled device in touchlink range to join a new network. The configuration of the new network can be explicitly set.")
     parser_join.add_argument('--addr_new', type=arg_type.addr_short,
             help="Assign a new short network address to the target device. "
                 "(The target might ignore this option.)")
@@ -292,7 +280,7 @@ def join(args):
             dst_addr = response['pkt'].src_addr
             args.radio.set_channel(response['channel'])
 
-            # encryp network key for key transport:
+            # encrypt network key for key transport:
             encrypted_network_key = touchlink_crypt.encrypt_network_key(
                     args.network_key,
                     response['pkt'].inter_pan_transaction_id,
@@ -394,7 +382,7 @@ def update_sqn(pkt, inc=1):
     return pkt
 
 def print_responses(pkt_list, hexdump=False, show=False):
-    """Print src_addr and src_pan_id and rssi of every packet in the pkt_list"""
+    """Print src_addr and src_pan_id and RSSI of every packet in the pkt_list"""
     print("Received {} scan responses:".format(len(pkt_list)))
     print("")
     if hexdump or show:
@@ -436,7 +424,7 @@ def print_table(header, data):
         row_format += "{:<" + str(w+1) + "}|"
 
     print(row_format.format(*header))
-    print("=" * (sum(widths) + 2*len(header)))  # seperator
+    print("=" * (sum(widths) + 2*len(header)))  # separator
     for d in data:
         print(row_format.format(*d))
 
@@ -450,8 +438,7 @@ def clean_exit(radio):
 def main():
     # TODO: implement Start Network Request command?
 
-    parser = argparse.ArgumentParser(description="Send different commands of "
-            "the touchlink commissioning protocol to ZLL devices in range.")
+    parser = argparse.ArgumentParser(description="This tool partially reimplements the touchlink commissioning procedure from as an initiator. It consists of several sub-tools, which can send specific touchlink commands. For the description of all parameters of a sub-tool, please refer to the help message, e.g., 'z3sec_touchlink scan --help'.")
 
     # radio parser
     radio_group = parser.add_mutually_exclusive_group(required=True)
@@ -465,10 +452,10 @@ def main():
     radio_group.add_argument("--sdr", action="store_true",
             help="Use a GNU Radio / USRP radio device.")
     parser.add_argument("-c", "--channels", default=[11], type=arg_type.channels,
-            help="Set channel for scanning. Default: 11. Valid "
+            help="Set channels for scanning. Default: 11. Valid "
                 "values: 11 - 26. Setting more than one channel is possible "
-                "by seperating the channels by comma (no space). All primary "
-                "channels can be selected by 'primar' or 'p', all secondary "
+                "by separating the channels by comma (no space). All primary "
+                "channels can be selected by 'primary' or 'p', all secondary "
                 "channels can selected by 'secondary' or 's' and all valid "
                 "channels can be selected by 'all'.")
 

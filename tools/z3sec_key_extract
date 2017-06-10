@@ -47,14 +47,13 @@ def handle_packets(pkt):
             print("")
             SUCCESS = True
         else:
-            print(">>> Network key: undecryptable")
+            print(">>> Network key: undecipherable")
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Extract and decrypt the "
-            "network key being transmitted during a touchlink key transport. "
-            "Either use a radio (--kb or --sdr) or a pcap-file (--pcap) as "
-            "traffic source.")
+    parser = argparse.ArgumentParser(
+            description="With this tool, the network key transmitted during a legitimate touchlink commissioning procedure can be extracted and decrypted. As ZigBee traffic source, a radio device can sniff actively for touchlink commissioning procedures on a specific channel, or it can be read from a pre-captured pcap file.")
+
     parser.add_argument('-c', '--channel', default=11, type=arg_type.channel,
             help="Set the channel to operate on (11 - 26).")
     source_group = parser.add_mutually_exclusive_group(required=True)
