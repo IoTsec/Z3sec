@@ -41,6 +41,8 @@ For more information about the security weaknesses of touchlink commissioning an
    (Password for sudo is requested when needed.)
 4. Install Z3sec with:
   - `sudo python setup.py install`
+5. Add the leaked ZLL master key in `~/.config/z3sec/config.ini`. This
+   configuration file is created at the first run of a Z3sec tool.
 
 ### Hardware
 

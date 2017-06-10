@@ -5,22 +5,35 @@ Functions to handle packets relevant for the touchlink key transport. Detect
 keytransport packets. Extract network key. Decrypt and encrypt network key.
 """
 
+import ConfigParser
 from Crypto.Cipher import AES
-import sys
 import os
+import sys
 
 from scapy.all import *
 from scapy.layers.dot15d4 import *
 
-try:
-    with open(os.environ["HOME"] + "/.config/z3sec/zll_master_key.txt", "r") as f:
-        ZLL_MASTER_KEY = f.read().strip().decode('hex')
-except Exception as e:
-    print(e.message)
-    print("Warning: ZLL_MASTER_KEY could not be read from file " + os.environ["HOME"] + "/.config/z3sec/zll_master_key.txt (Format: '9F55...'). This key can be found on Twitter (MayaZigBee).")
-    print("Touchlink keytransports will not be decrypted.")
-    ZLL_MASTER_KEY = None
-ZLL_CERTIFICATION_KEY = "\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf"
+CONFIG_PATH = os.environ["HOME"] + "/.config/z3sec/touchlink_crypt.ini"
+
+# Read config
+config = ConfigParser.ConfigParser()
+if os.path.exists(CONFIG_PATH):
+    # Read master keys from config file
+    config.read(CONFIG_PATH)
+    ZLL_CERTIFICATION_KEY = config.get("master_keys", "zll_certification_key").decode("hex")
+    ZLL_MASTER_KEY = config.get("master_keys", "zll_master_key").decode("hex")
+    if len(ZLL_MASTER_KEY) is not 16:
+        print("Warning: ZLL_MASTER_KEY could not be read from file " + CONFIG_PATH + ". This key can be found on Twitter (MayaZigBee). Touchlink key transport encryption and decryption will not work correctly.")
+        ZLL_MASTER_KEY = None
+else:
+    # Create default config file if it does not exist yet
+    if not os.path.exists(os.path.dirname(CONFIG_PATH)):
+        os.makedirs(os.path.dirname(CONFIG_PATH))
+    config.add_section("master_keys")
+    config.set("master_keys", "zll_certification_key", "C0C1C2C3C4C5C6C7C8C9CACBCCCDCECF")
+    config.set("master_keys", "zll_master_key", "")  # Needs to be configured by user
+    with open(CONFIG_PATH, 'wb') as configfile:
+        config.write(configfile)
 
 def is_keytransport(pkt):
     """Checks if pkt is a touchlink keytransport packet.
@@ -142,6 +155,7 @@ def decrypt_network_key(encrypted_network_key, inter_pan_transaction_id,
         response_id = struct.pack(">L", response_id)
 
     if key is None:  # assuming development key (see ZLL 8.7.4 Key index 0)
+        print(">> Master key is None. Using development key for decryption")
         transport_key = "PhLi" + inter_pan_transaction_id + "CLSN" + response_id
     else:  # Master or Certification key (see ZLL 8.7.5.2.3)
         expanded_input = inter_pan_transaction_id * 2 + response_id * 2
@@ -185,6 +199,7 @@ def encrypt_network_key(network_key, inter_pan_transaction_id, response_id,
         response_id = struct.pack(">L", response_id)
 
     if key is None:  # assuming development key (see ZLL 8.7.4 Key index 0)
+        print(">> Master key is None. Using development key for encryption")
         transport_key = "PhLi" + inter_pan_transaction_id + "CLSN" + response_id
     else:  # Master or Certification key (see ZLL 8.7.5.2.3)
         expanded_input = inter_pan_transaction_id * 2 + response_id * 2
