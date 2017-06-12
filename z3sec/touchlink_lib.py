@@ -58,7 +58,7 @@ class Transaction():
                 if transaction_sequence is not None else r(0,2**8)
         self.inter_pan_transaction_id = inter_pan_transaction_id \
                 if inter_pan_transaction_id is not None else r(1,2**32)
-        print("inter_pan_transaction_id:", self.inter_pan_transaction_id)
+        # print("inter_pan_transaction_id:", self.inter_pan_transaction_id)
 
     def refresh_inter_pan_transaction_id(self):
         """Randomly generates a new inter-PAN transaction identifier and
