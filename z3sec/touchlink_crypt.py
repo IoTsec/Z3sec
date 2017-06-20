@@ -9,6 +9,7 @@ import ConfigParser
 from Crypto.Cipher import AES
 import os
 import sys
+import hashlib
 
 from scapy.all import *
 from scapy.layers.dot15d4 import *
@@ -22,8 +23,11 @@ if os.path.exists(CONFIG_PATH):
     config.read(CONFIG_PATH)
     ZLL_CERTIFICATION_KEY = config.get("master_keys", "zll_certification_key").decode("hex")
     ZLL_MASTER_KEY = config.get("master_keys", "zll_master_key").decode("hex")
-    if len(ZLL_MASTER_KEY) is not 16:
-        print("Warning: ZLL_MASTER_KEY could not be read from file " + CONFIG_PATH + ". This key can be found on Twitter (MayaZigBee). Touchlink key transport encryption and decryption will not work correctly.")
+    # Check if ZLL_MASTER_KEY is correct by coparing its hash
+    md5 = hashlib.md5()
+    md5.update(ZLL_MASTER_KEY)
+    if md5.hexdigest() != '68eba85ac7514d786fce56731e24f9c8':
+        print("Warning: ZLL_MASTER_KEY is not correctly set in  " + CONFIG_PATH + ". This key can be found on Twitter (MayaZigBee). Touchlink key transport encryption and decryption will not work correctly.")
         ZLL_MASTER_KEY = None
 else:
     # Create default config file if it does not exist yet

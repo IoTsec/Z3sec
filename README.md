@@ -119,7 +119,7 @@ For the description of all parameters of a sub-tool, please refer to the help me
 
 ##### Note (1)
 
-For the `join` command, the specification of the pre-configured touchlink link key (also known as ZLL Master Key) in `"~/.config/z3sec/zll_master_key.txt` is required.
+For the `join` command, the specification of the pre-configured touchlink link key (also known as ZLL Master Key) in `"~/.config/z3sec/touchlink_crypt.ini` is required.
 This key was leaked in March 2015 and can be found online.
 
 
