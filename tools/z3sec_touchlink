@@ -446,7 +446,7 @@ def print_responses(pkt_list, hexdump=False, show=False):
                 hex(p['pkt'])
         print("")
     print("Scan responses overview:")
-    header = ["#", "RSSI", "channel", "src_pan_id", "src_addr"]
+    header = ["#", "RSSI", "channel", "src_pan_id", "src_addr_ext"]
     data = []
     if len(pkt_list) > 0:
         for (i, p) in enumerate(pkt_list):
@@ -510,16 +510,7 @@ def main():
                 "channels can be selected by 'primary' or 'p', all secondary "
                 "channels can selected by 'secondary' or 's' and all valid "
                 "channels can be selected by 'all'.")
-
-    parser.add_argument("-i", "--interactive", action="store_true",
-        help="After each scan on all specified channels, all responding "
-        "devices are displayed, and the user is prompted to select one "
-        "device to send further commands to. Note: Select a device within 8 "
-        "seconds, otherwise the transaction expires. If the interactive "
-        "option is not set, further commands are sent do all responding "
-        "devices.")
-
-    # parse touchlink src addresses
+    # parse the addresses for the local device
     parser.add_argument("--src_addr", type=arg_type.addr_short,
             help="Set the short source address of the own radio device "
             "(e.g. to spoof other devices). If not set, a random address is "

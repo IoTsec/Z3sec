@@ -86,36 +86,37 @@ For the description of all parameters of a sub-tool, please refer to the help me
   sub-commands, it is possible to specify the channels on which shall be
   searched for devices. By default, only channel 11 is scanned.
 
-        z3sec_touchlink --sdr --channels primary scan
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <primary|secondary|11,12> scan
 - `anti-scan`: Suppress scan requests of other touchlink initiators by impersonating them.
   This tool monitors channel 11 until a touchlink scan request of another
   initiator is received. This scan request is cloned and transmitted on all other
   channels. Touchlink-enabled devices on these channels respond immediately to the spoofed
   scan request, and won't reply to the scan request by the legitimate initiator.
 
-        z3sec_touchlink --sdr anti-scan
-- `reset`: Reset a touchlink-enabled device in touchlink range to factory-new. The target devices leave their
-  current network and search for new networks. The target devices have to be recommissioned before they
-  can be controlled again.
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) anti-scan
+- `reset`: Reset a touchlink-enabled device in touchlink range to factory-new. The target device leaves its
+  current network and search for new networks. The target device has to be recommissioned before it
+  can be controlled again. The `--target` option needs to be set to the extended address of a touchlink-enabled device.
+  It can be discovered by executing a `scan` and copying the `<src_addr_ext>` of an answering device before.
 
-        z3sec_touchlink --sdr reset
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) reset --target <addr_ext>
   Due to an implementation bug, some (old) touchlink-enabled devices can be reset, even if they are not in touchlink range.
   This bug can be exploited in the following way:
 
-        z3sec_touchlink --sdr reset --no_scan
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) reset --no_scan
 - `identify`: Trigger the identify action (e.g. blinking) of a touchlink-enabled device in touchlink range.
   The identify duration can be set up to a theoretical maximum duration of 0xFFFE seconds (approximately 18 hours):
 
-        z3sec_touchlink --sdr identify --duration 65535
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) identify --target <addr_ext> --duration <duration>
   This command also supports the bypassing of the proximity check with `--no_scan`.
 - `update`: Update the channel of a touchlink-enabled device in touchlink range.  If the channel is changed,
   the targeted device cannot communicate with its legitimate network anymore.
 
-        z3sec_touchlink --sdr update --channel_new 26
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) update --target <addr_ext> --channel_new <channel>
 - `join`: Request a touchlink-enabled device in touchlink range to join a new network.
   The configuration of the new network can be explicitly set:
 
-        z3sec_touchlink --sdr --src_pan_id 0xF001 --src_pan_id_ext DE:FE:C8:ED:DE:FE:C8:ED join --channel_new 26 --network_key BAD1CECAFEFEED8BEEFD00DEB00BFA11
+        z3sec_touchlink --sdr --src_pan_id <src_pan_id> --src_pan_id_ext <src_pan_id_ext> join --channel_new <channel> --network_key <network_key_hex>
 
 ##### Note (1)
 
@@ -155,35 +156,11 @@ This tool keeps track of all ZigBee devices and networks on a specific
 channel.
 
 If the network key of a ZigBee network is known, this tool can be used to
-interactively send command frames to devices of this network. The
-network key for a network is passed on startup:
+interactively send command frames to devices of this network in order to change
+their state. The network key for the network needs to be known.
 
-    z3sec_control --sdr --channel 15 --pan_id 0xF001 --nwk_key BAD1CECAFEFEED8BEEFD00DEB00BFA11
-An interactive shell is opened in which Python/Scapy commands can be entered in
-order to send command packets to nodes of this network.
-By entering
-
-    show()
-a list of all devices in the network is printed:
-
-    Network: 0
-    pan_id:      0xF001
-    ext_pan_id:  DE:FE:C8:ED:DE:FE:C8:ED
-    network_key: bad1cecafefeed8beefd00deb00bfa11
-    # Devices:   2
-    # |addr   |ext_addr                |mac_sqn |nwk_sqn |sec_fc  |aps_fc |zcl_sqn |zdp_sqn |
-    =========================================================================================
-    0 |0xBAAD |DD:FF:88:0D:EE:FF:CC:66 |148     |229     |8323398 |3298   |23      |None    |
-    1 |0xFA11 |EE:EE:28:0D:55:F1:98:1E |38      |112     |7249729 |2384   |6       |None    |
-Now a command packet can be send to a device in the network. Suppose the second device in
-the network is a light bulb, we can impersonate the other device in the network
-and send a `light off` command to it
-
-    send(0, 0, 1, pkt_off)
-where the first argument specifies the ID of the network, the second
-argument is the ID of the (sending) device, which we want impersonate,
-the third argument is the ID of the device to which the
-packet is addressed, and the last argument is the command packet.
+    z3sec_control --sdr --channel <channel> --pan_id <pan_id> --network_key <network_key_hex>
+See the Wiki ([Tutorial 2: Takeover Attack](https://github.com/IoTsec/Z3sec/wiki/Tutorial-2:-Takeover-Attack)) for further description.
 
 ##### Note
 The command packet is automatically encrypted using the given network key and all the
