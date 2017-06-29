@@ -101,24 +101,24 @@ For the description of all parameters of a sub-tool, please refer to the help me
   can be controlled again. The `--target` option needs to be set to the extended address of a touchlink-enabled device.
   It can be discovered by executing a `scan` and copying the `<src_addr_ext>` of an answering device before.
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) reset --target <addr_ext>
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> reset --target <addr_ext>
   Due to an implementation bug, some (old) touchlink-enabled devices can be reset, even if they are not in touchlink range.
   This bug can be exploited in the following way:
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) reset --target <addr_ext> --no_scan
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> reset --target <addr_ext> --no_scan
 - `identify`: Trigger the identify action (e.g. blinking) of a touchlink-enabled device in touchlink range.
   The identify duration can be set up to a theoretical maximum duration of 0xFFFE seconds (approximately 18 hours):
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) identify --target <addr_ext> --duration <duration>
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> identify --target <addr_ext> --duration <duration>
   This command also supports the bypassing of the proximity check with `--no_scan`.
 - `update`: Update the channel of a touchlink-enabled device in touchlink range.  If the channel is changed,
   the targeted device cannot communicate with its legitimate network anymore.
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) update --target <addr_ext> --channel_new <channel>
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> update --target <addr_ext> --channel_new <channel>
 - `join`: Request a touchlink-enabled device in touchlink range to join a new network.
   The configuration of the new network can be explicitly set:
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) join --target <addr_ext> --channel_new <channel> --network_key <network_key_hex>
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> join --target <addr_ext> --channel_new <channel> --pan_id_new <pan_id> --network_key <network_key_hex>
 
 ##### Note (1)
 
