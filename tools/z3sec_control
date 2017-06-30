@@ -75,9 +75,9 @@ class RecvSnd(threading.Thread):
         self.stoprequest = threading.Event()
 
     def run(self):
-        try:
-            radio.sniffer_on()
-            while not self.stoprequest.isSet():
+        radio.sniffer_on()
+        while not self.stoprequest.isSet():
+            try:
                 recvpkt, info = radio.recv()  # sniff packet
                 if recvpkt is not None:
                     pkt = self.observer.analyse(recvpkt)
@@ -91,13 +91,14 @@ class RecvSnd(threading.Thread):
                 # radio.sniffer_off()
                 radio.send(sndpkt)
                 # radio.sniffer_on()
-            radio.sniffer_off()
-            radio.close()
-        except Queue.Empty:  # No packet in send queue (expected)
-            pass
-        except:  # Except everything else, because we do not want this thread to crash
-            print("Warning: An error occurred in the send and receive background thread:")
-            print(traceback.format_exc())
+            except Queue.Empty:  # No packet in send queue (expected)
+                continue
+            except:  # Except everything else, because we do not want this thread to crash
+                print("Warning: An error occurred in the send and receive background thread:")
+                print(traceback.format_exc())
+                continue
+        radio.sniffer_off()
+        radio.close()
 
     def stop(self):
         self.stoprequest.set()
