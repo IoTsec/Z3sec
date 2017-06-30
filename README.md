@@ -25,6 +25,7 @@ For more information about the security weaknesses of touchlink commissioning an
 + KillerBee
 + scapy-radio (https://bitbucket.org/cybertools/scapy-radio)
 + Ipython
++ tcpdump
 + Wireshark (optional)
 + python-crypto
 + python-sphinx (docs)

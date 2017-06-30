@@ -46,6 +46,7 @@ sudo apt-get install -y \
     python-usb \
     swig \
     swig3.0 \
+    tcpdump \
     xterm
     #python-pip \
 
