@@ -43,12 +43,12 @@ USAGE = """USAGE:
     Or create own packets interactively by using scapy commands.
 
     Enter 'create_phantom_device($network_no)' to introduce a new device to
-    a netork that can be used as a source device when sending.
+    a network that can be used as a source device when sending.
     Otherwise, it is possible to impersonate a real device.
 
     Enter 'help()' to show this help message.
 
-    Exit by entering 'stop()'."""
+    Exit the shell by entering 'exit'."""
 
 # Some basic ZLL command frames
 pkt_on = command_frames.create_on()
@@ -75,14 +75,14 @@ class RecvSnd(threading.Thread):
         self.stoprequest = threading.Event()
 
     def run(self):
-        radio.sniffer_on()
-        while not self.stoprequest.isSet():
-            recvpkt, info = radio.recv()  # sniff packet
-            if recvpkt is not None:
-                pkt = self.observer.analyse(recvpkt)
-                self.sniffed_q.put(pkt)
-            # check if there are packets for injection
-            try:  # send queued packets
+        try:
+            radio.sniffer_on()
+            while not self.stoprequest.isSet():
+                recvpkt, info = radio.recv()  # sniff packet
+                if recvpkt is not None:
+                    pkt = self.observer.analyse(recvpkt)
+                    self.sniffed_q.put(pkt)
+                # check if there are packets for injection
                 (sndpkt_raw, mac_src, nwk_src, mac_dst, nwk_dst) = \
                         self.inject_q.get_nowait()
                 sndpkt = self.observer.make_injectable(
@@ -91,10 +91,13 @@ class RecvSnd(threading.Thread):
                 # radio.sniffer_off()
                 radio.send(sndpkt)
                 # radio.sniffer_on()
-            except Queue.Empty:
-                pass
-        radio.sniffer_off()
-        radio.close()
+            radio.sniffer_off()
+            radio.close()
+        except Queue.Empty:  # No packet in send queue (expected)
+            pass
+        except:  # Except everything else, because we do not want this thread to crash
+            print("Warning: An error occurred in the send and receive background thread:")
+            print(traceback.format_exc())
 
     def stop(self):
         self.stoprequest.set()
@@ -154,7 +157,7 @@ def create_phantom_device(network_no):
 def show():
     """Display all currently tracked networks and devices."""
     if len(observer.known_networks) is 0:
-        print("No ZLL devices or networks have been discoverd yet. Please "
+        print("No ZLL devices or networks have been discovered yet. Please "
                 "wait or tune to another channel.")
     for (i, network) in enumerate(observer.known_networks):
         print("Network: {}".format(i))
@@ -169,11 +172,6 @@ def show_lqi_rsp(sniff_q):
                 sniff_pkt[ZDPLqiResponse].show()
         except Queue.Empty:
             return
-
-def stop():
-    """Clean exit."""
-    recv_snd.stop()
-    exit()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -246,3 +244,6 @@ if __name__ == "__main__":
 
     # start interactive ipython shell
     IPython.embed(banner1="Z3sec control console (utilizing IPython):")
+
+    # clean exit: stop background thread
+    recv_snd.stop()
