@@ -89,7 +89,7 @@ For the description of all parameters of a sub-tool, please refer to the help me
   sub-commands, it is possible to specify the channels on which shall be
   searched for devices. By default, only channel 11 is scanned.
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <primary|secondary|11,12> scan
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <all|primary|secondary|11...26> scan
 - `anti-scan`: Suppress scan requests of other touchlink initiators by impersonating them.
   This tool monitors channel 11 until a touchlink scan request of another
   initiator is received. This scan request is cloned and transmitted on all other
