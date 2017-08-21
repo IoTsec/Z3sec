@@ -14,6 +14,8 @@ This commissioning procedure is an optional feature in the ZigBee 3.0 standard.
 A local attacker is able to perform denial-of-service attacks or to take control over ZigBee-certified products.
 For more information about the security weaknesses of touchlink commissioning and the procedures of attacks, please see [1].
 
+A demonstration of Z3sec can be watched on [Youtube](https://youtu.be/fssAc_udn84).
+
 ## Installation
 
 ### Dependencies
