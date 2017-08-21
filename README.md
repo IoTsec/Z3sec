@@ -121,7 +121,7 @@ For the description of all parameters of a sub-tool, please refer to the help me
 - `join`: Request a touchlink-enabled device in touchlink range to join a new network.
   The configuration of the new network can be explicitly set:
 
-        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> join --target <addr_ext> --channel_new <channel> --pan_id_new <pan_id> --network_key <network_key_hex>
+        z3sec_touchlink (--kb /dev/ttyUSBX | --sdr) --channels <channel> join --target <addr_ext> --channel_new <channel> --network_key <network_key_hex>
 
 ##### Note (1)
 
@@ -164,7 +164,7 @@ If the network key of a ZigBee network is known, this tool can be used to
 interactively send command frames to devices of this network in order to change
 their state. The network key for the network needs to be known.
 
-    z3sec_control (--kb /dev/ttyUSBX | --sdr) --channel <channel> --network_key <network_key_hex>
+    z3sec_control (--kb /dev/ttyUSBX | --sdr) --channel <channel> --pan_id <pan_id> --network_key <network_key_hex>
 Please see our Wiki ([Tutorial 2: Takeover Attack](https://github.com/IoTsec/Z3sec/wiki/Tutorial-2:-Takeover-Attack)) for a detailed  description.
 
 ##### Note
