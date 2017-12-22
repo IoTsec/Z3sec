@@ -95,7 +95,7 @@ sudo python setup.py install
 cd "$dependencies"
 
 echo ">>> Installing gr-foo"
-git clone https://github.com/bastibl/gr-foo.git
+git clone -b master https://github.com/bastibl/gr-foo.git
 cd gr-foo
 mkdir build && cd build/
 cmake .. && make
